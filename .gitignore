@@ -1,0 +1,9 @@
+venv
+.env
+*.xlsx
+*.odt
+media/*
+.~*
+.DS_Store
+**/supabase/.branches
+**/supabase/.temp
