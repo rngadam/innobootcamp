@@ -101,11 +101,16 @@ with psycopg.connect(os.environ['POSTGRES'], row_factory=dict_row) as conn:
                 deliverable['deliverable_type_id'] = deliverable_type['id']
                 if 'name' in deliverable:
                     assert deliverable_type['basis'] == 'individual'
-                    assert deliverable['name'], deliverable
+                    if not deliverable['name']:
+                        print('name column but value is None, exiting processing of sheet')
+                        break
                     participant_name = deliverable['name']
                     deliverable['author_id'] = lookup_participant_id(cur, participant_name)
                 elif 'team' in deliverable:
                     assert deliverable_type['basis'] == 'team', deliverable
+                    if not deliverable['team']:
+                        print('team column but value is None, exiting processing of sheet')
+                        break
                     team_identifier = deliverable['team']
                     deliverable['author_id'] = lookup_team_id(cur, team_identifier)
                 else:
@@ -115,15 +120,28 @@ with psycopg.connect(os.environ['POSTGRES'], row_factory=dict_row) as conn:
                 output = cur.execute(
                     'INSERT INTO deliverable(deliverable_type_id, author_id, grade)'
                     ' VALUES(%(deliverable_type_id)s, %(author_id)s, %(score)s)'
-                    ' RETURNING id',
+                    ' ON CONFLICT(deliverable_type_id, author_id)'
+                    ' DO UPDATE SET grade = EXCLUDED.grade'
+                    ' RETURNING id, iteration',
                     deliverable)
-                deliverable['id'] = output.fetchone()['id']
+                row = output.fetchone()
+                deliverable['id'] = row['id']
+
+                if row['iteration'] > 1:
+                    cur.execute(
+                        'INSERT INTO bonus(deliverable_id, note, bonus)'
+                        ' VALUES(%s, %s, %s)',
+                        [deliverable['id'], 'iteration', 0.1])
+                cur.execute(
+                    'UPDATE deliverable SET iteration = iteration + 1 WHERE id = %s',
+                    [deliverable['id']])
 
                 for k in deliverable.keys():
                     if not k or not k.startswith('bonus'):
                         continue
                     bonus_name = ' '.join(k.split(' ')[1:])
-                    cur.execute(
-                        'INSERT INTO bonus(deliverable_id, note, bonus)'
-                        ' VALUES(%s, %s, %s)',
-                        [deliverable['id'], bonus_name, deliverable[k]])
+                    if deliverable[k] and int(deliverable[k]):
+                        cur.execute(
+                            'INSERT INTO bonus(deliverable_id, note, bonus)'
+                            ' VALUES(%s, %s, %s)',
+                            [deliverable['id'], bonus_name, deliverable[k]])
