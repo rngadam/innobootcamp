@@ -53,6 +53,8 @@ lookup_deliverable_type = {}
 
 with psycopg.connect(os.environ['POSTGRES'], row_factory=dict_row) as conn:
     with conn.cursor() as cur:
+        cur.execute('DELETE FROM "event" CASCADE;')
+        cur.execute('DELETE FROM participant CASCADE;')
         cur.execute('INSERT INTO event(id, name) VALUES (%(id)s, %(name)s)', event)
 
         for participant in participants:
@@ -137,10 +139,12 @@ with psycopg.connect(os.environ['POSTGRES'], row_factory=dict_row) as conn:
                     [deliverable['id']])
 
                 for k in deliverable.keys():
-                    if not k or not k.startswith('bonus'):
+                    if k is None or deliverable[k] is None or not 'bonus' in k:
                         continue
                     bonus_name = ' '.join(k.split(' ')[1:])
-                    if deliverable[k] and int(deliverable[k]):
+                    value = float(deliverable[k])
+                    if value != 0:
+                        print(f"bonus {bonus_name} = {value}")
                         cur.execute(
                             'INSERT INTO bonus(deliverable_id, note, bonus)'
                             ' VALUES(%s, %s, %s)',
