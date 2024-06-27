@@ -2,11 +2,27 @@ import openpyxl
 import psycopg
 import sys
 import os
+import json
 
+from functools import partial
+from psycopg.types.json import Jsonb
 from psycopg.rows import dict_row
+
+from uuid import UUID, uuid4
+
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+class UUIDEncoder(json.JSONEncoder):
+    """A JSON encoder which can dump UUID."""
+    def default(self, obj):
+        if isinstance(obj, UUID):
+            return str(obj)
+        return json.JSONEncoder.default(self, obj)
+
+uuid_dumps = partial(json.dumps, cls=UUIDEncoder, default=str)
 
 def clean_row(row):
     return_row = []
@@ -60,8 +76,8 @@ with psycopg.connect(os.environ['POSTGRES'], row_factory=dict_row) as conn:
         for participant in participants:
             participant['event_id'] = event['id']
             cur.execute(
-                "INSERT INTO participant(name) VALUES(%(name)s)",
-                participant
+                "INSERT INTO participant(name, properties) VALUES(%s, %s)",
+                [participant['name'], Jsonb(participant)]
                 )
 
         for team in teams:
@@ -127,6 +143,9 @@ with psycopg.connect(os.environ['POSTGRES'], row_factory=dict_row) as conn:
                     ' RETURNING id, iteration',
                     deliverable)
                 row = output.fetchone()
+                cur.execute(
+                    'UPDATE deliverable SET details = %s WHERE id = %s',
+                    [Jsonb(deliverable, dumps=uuid_dumps), row['id']])
                 deliverable['id'] = row['id']
 
                 if row['iteration'] > 1:
@@ -144,7 +163,7 @@ with psycopg.connect(os.environ['POSTGRES'], row_factory=dict_row) as conn:
                     bonus_name = ' '.join(k.split(' ')[1:])
                     value = float(deliverable[k])
                     if value != 0:
-                        print(f"bonus {bonus_name} = {value}")
+                        # print(f"bonus {bonus_name} = {value}")
                         cur.execute(
                             'INSERT INTO bonus(deliverable_id, note, bonus)'
                             ' VALUES(%s, %s, %s)',
