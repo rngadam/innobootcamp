@@ -88,7 +88,7 @@ with psycopg.connect(os.environ['POSTGRES'], row_factory=dict_row) as conn:
                 " RETURNING id",
                 team)
             team['id'] = output.fetchone()['id']
-            for i in range(1,6):
+            for i in range(1,7):
                 member_key = 'member' + str(i)
                 if member_key not in team or not team[member_key]:
                     break
